@@ -1,0 +1,755 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+
+<meta name="viewport"
+      content="width=device-width, initial-scale=1.0">
+
+<title>High Resolution Sudoku</title>
+
+<style>
+    * {
+        box-sizing: border-box;
+    }
+
+    html,
+    body {
+        margin: 0;
+        padding: 0;
+        background: #ffffff;
+    }
+
+    body {
+        min-height: 100vh;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        padding: 20px;
+        font-family: Arial, sans-serif;
+    }
+
+    .toolbar {
+        display: flex;
+        gap: 10px;
+        margin-bottom: 16px;
+    }
+
+    button {
+        border: 1px solid #aaa;
+        background: #fff;
+        padding: 9px 16px;
+        border-radius: 5px;
+        cursor: pointer;
+        font-size: 14px;
+    }
+
+    button:hover {
+        background: #f3f3f3;
+    }
+
+    #sudokuCanvas {
+        display: block;
+        width: min(95vw, 900px);
+        height: auto;
+        background: white;
+    }
+</style>
+</head>
+
+<body>
+
+<div class="toolbar">
+    <button id="downloadButton">
+        고해상도 PNG 다운로드
+    </button>
+
+    <button id="printButton">
+        인쇄
+    </button>
+</div>
+
+<canvas id="sudokuCanvas"></canvas>
+
+
+<script>
+"use strict";
+
+/*
+============================================================
+  Sudoku Canvas Renderer
+  - 원본 이미지를 사용하지 않음
+  - 모든 선과 숫자를 Canvas로 직접 그림
+  - 고해상도 PNG 저장 가능
+============================================================
+*/
+
+
+// ------------------------------------------------------------
+// Canvas 설정
+// ------------------------------------------------------------
+
+const canvas = document.getElementById("sudokuCanvas");
+const ctx = canvas.getContext("2d");
+
+
+// 실제 이미지 출력 크기
+// 원본과 비슷한 500 × 500 비율
+const BASE_WIDTH = 500;
+const BASE_HEIGHT = 500;
+
+// 내부 렌더링 배율
+// 4배 = 1968 × 2032
+const RENDER_SCALE = 4;
+
+canvas.width = BASE_WIDTH * RENDER_SCALE;
+canvas.height = BASE_HEIGHT * RENDER_SCALE;
+
+
+// CSS 크기는 화면에 맞게 자동 조절
+canvas.style.width = "min(95vw, 900px)";
+canvas.style.height = "auto";
+
+
+// Canvas 좌표를 원래 기준 크기로 사용
+ctx.scale(RENDER_SCALE, RENDER_SCALE);
+
+
+// ------------------------------------------------------------
+// 색상
+// ------------------------------------------------------------
+
+const COLORS = {
+    background: "#ffffff",
+    grid: "#111111",
+    given: "#777777",
+    candidate: "#111111"
+};
+
+
+// ------------------------------------------------------------
+// Sudoku 영역
+// ------------------------------------------------------------
+
+const gridLeft = 1;
+const gridTop = 1;
+
+const gridSize = 486;
+
+const cellSize = gridSize / 9;
+
+
+// ------------------------------------------------------------
+// 큰 숫자
+//
+// 0 = 빈칸
+// ------------------------------------------------------------
+
+const givens = [
+    [8, 0, 0, 0, 0, 0, 0, 0, 0],
+
+    [0, 0, 3, 6, 0, 0, 0, 0, 0],
+
+    [0, 7, 0, 0, 9, 0, 2, 0, 0],
+
+    [0, 5, 0, 0, 0, 7, 0, 0, 0],
+
+    [0, 0, 0, 0, 4, 5, 7, 0, 0],
+
+    [0, 0, 0, 1, 0, 0, 0, 3, 0],
+
+    [0, 0, 1, 0, 0, 0, 0, 6, 8],
+
+    [0, 0, 8, 5, 0, 0, 0, 1, 0],
+
+    [0, 9, 0, 0, 0, 0, 4, 0, 0]
+];
+
+
+// ------------------------------------------------------------
+// 작은 후보 숫자
+//
+// 각 칸의 문자열에 들어 있는 숫자만 표시
+//
+// 위치:
+//
+//  1 2 3
+//  4 5 6
+//  7 8 9
+// ------------------------------------------------------------
+
+const candidates = [
+
+    [
+        "",
+        "1246",
+        "24569",
+        "2347",
+        "12357",
+        "1234",
+        "13569",
+        "4579",
+        "1345679"
+    ],
+
+    [
+        "12459",
+        "124",
+        "",
+        "",
+        "12578",
+        "1248",
+        "1589",
+        "45789",
+        "14579"
+    ],
+
+    [
+        "1456",
+        "",
+        "456",
+        "348",
+        "",
+        "1348",
+        "",
+        "458",
+        "13456"
+    ],
+
+    [
+        "123469",
+        "",
+        "2469",
+        "2389",
+        "2368",
+        "",
+        "1689",
+        "2489",
+        "12469"
+    ],
+
+    [
+        "12369",
+        "12368",
+        "269",
+        "2389",
+        "",
+        "",
+        "",
+        "289",
+        "1269"
+    ],
+
+    [
+        "24679",
+        "2468",
+        "24679",
+        "",
+        "268",
+        "2689",
+        "5689",
+        "",
+        "24569"
+    ],
+
+    [
+        "23457",
+        "234",
+        "",
+        "23479",
+        "237",
+        "2349",
+        "359",
+        "",
+        ""
+    ],
+
+    [
+        "23467",
+        "2346",
+        "",
+        "",
+        "2367",
+        "23469",
+        "39",
+        "",
+        "2379"
+    ],
+
+    [
+        "23567",
+        "",
+        "2567",
+        "2378",
+        "123678",
+        "12368",
+        "",
+        "257",
+        "2357"
+    ]
+];
+
+
+// ------------------------------------------------------------
+// 전체 초기화
+// ------------------------------------------------------------
+
+function clearCanvas() {
+
+    ctx.save();
+
+    ctx.fillStyle = COLORS.background;
+
+    ctx.fillRect(
+        0,
+        0,
+        BASE_WIDTH,
+        BASE_HEIGHT
+    );
+
+    ctx.restore();
+}
+
+
+// ------------------------------------------------------------
+// Sudoku 격자
+// ------------------------------------------------------------
+
+function drawGrid() {
+
+    ctx.save();
+
+    ctx.strokeStyle = COLORS.grid;
+
+    /*
+        세로선
+    */
+
+    for (let i = 0; i <= 9; i++) {
+
+        const x =
+            gridLeft +
+            i * cellSize;
+
+        ctx.beginPath();
+
+        ctx.moveTo(
+            x,
+            gridTop
+        );
+
+        ctx.lineTo(
+            x,
+            gridTop + gridSize
+        );
+
+        /*
+            바깥 테두리
+        */
+
+        if (i === 0 || i === 9) {
+
+            ctx.lineWidth = 2.8;
+
+        }
+
+        /*
+            3×3 블록 경계
+        */
+
+        else if (i % 3 === 0) {
+
+            ctx.lineWidth = 2.4;
+
+        }
+
+        /*
+            일반 칸
+        */
+
+        else {
+
+            ctx.lineWidth = 1.0;
+
+        }
+
+        ctx.stroke();
+    }
+
+
+    /*
+        가로선
+    */
+
+    for (let i = 0; i <= 9; i++) {
+
+        const y =
+            gridTop +
+            i * cellSize;
+
+        ctx.beginPath();
+
+        ctx.moveTo(
+            gridLeft,
+            y
+        );
+
+        ctx.lineTo(
+            gridLeft + gridSize,
+            y
+        );
+
+        if (i === 0 || i === 9) {
+
+            ctx.lineWidth = 2.8;
+
+        }
+
+        else if (i % 3 === 0) {
+
+            ctx.lineWidth = 2.4;
+
+        }
+
+        else {
+
+            ctx.lineWidth = 1.0;
+
+        }
+
+        ctx.stroke();
+    }
+
+    ctx.restore();
+}
+
+
+// ------------------------------------------------------------
+// 큰 숫자 하나
+// ------------------------------------------------------------
+
+function drawGivenNumber(row, column, number) {
+
+    const centerX =
+        gridLeft +
+        column * cellSize +
+        cellSize / 2;
+
+    const centerY =
+        gridTop +
+        row * cellSize +
+        cellSize / 2;
+
+
+    ctx.save();
+
+    ctx.font =
+        "bold " +
+        Math.round(cellSize * 0.55) +
+        "px Arial, Helvetica, sans-serif";
+
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+
+    ctx.fillStyle = COLORS.given;
+
+    ctx.fillText(
+        String(number),
+        centerX,
+        centerY + 1
+    );
+
+    ctx.restore();
+}
+
+
+// ------------------------------------------------------------
+// 작은 후보 숫자 하나
+// ------------------------------------------------------------
+
+function drawCandidateNumber(
+    row,
+    column,
+    numberString
+) {
+
+    if (!numberString) {
+        return;
+    }
+
+
+    const cellX =
+        gridLeft +
+        column * cellSize;
+
+    const cellY =
+        gridTop +
+        row * cellSize;
+
+
+    ctx.save();
+
+    ctx.font =
+        Math.round(cellSize * 0.215) +
+        "px Arial, Helvetica, sans-serif";
+
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+
+    ctx.fillStyle = COLORS.candidate;
+
+
+    /*
+        후보 숫자는 3×3 위치에 배치
+
+          1 2 3
+          4 5 6
+          7 8 9
+    */
+
+    for (const character of numberString) {
+
+        const number =
+            Number(character);
+
+        if (
+            number < 1 ||
+            number > 9
+        ) {
+            continue;
+        }
+
+
+        const index =
+            number - 1;
+
+        const candidateRow =
+            Math.floor(index / 3);
+
+        const candidateColumn =
+            index % 3;
+
+
+        const x =
+            cellX +
+            (candidateColumn + 0.5) *
+            cellSize / 3;
+
+
+        const y =
+            cellY +
+            (candidateRow + 0.5) *
+            cellSize / 3;
+
+
+        ctx.fillText(
+            character,
+            x,
+            y
+        );
+    }
+
+
+    ctx.restore();
+}
+
+
+// ------------------------------------------------------------
+// 모든 숫자
+// ------------------------------------------------------------
+
+function drawNumbers() {
+
+    for (
+        let row = 0;
+        row < 9;
+        row++
+    ) {
+
+        for (
+            let column = 0;
+            column < 9;
+            column++
+        ) {
+
+            const given =
+                givens[row][column];
+
+
+            if (given !== 0) {
+
+                drawGivenNumber(
+                    row,
+                    column,
+                    given
+                );
+
+            }
+
+            else {
+
+                drawCandidateNumber(
+                    row,
+                    column,
+                    candidates[row][column]
+                );
+
+            }
+        }
+    }
+}
+
+
+// ------------------------------------------------------------
+// 전체 렌더링
+// ------------------------------------------------------------
+
+function renderSudoku() {
+
+    clearCanvas();
+
+    drawGrid();
+
+    drawNumbers();
+}
+
+
+// ------------------------------------------------------------
+// PNG 다운로드
+// ------------------------------------------------------------
+
+function downloadPNG() {
+
+    const link =
+        document.createElement("a");
+
+    link.download =
+        "sudoku-high-resolution.png";
+
+    link.href =
+        canvas.toDataURL(
+            "image/png"
+        );
+
+    link.click();
+}
+
+
+// ------------------------------------------------------------
+// 인쇄
+// ------------------------------------------------------------
+
+function printSudoku() {
+
+    const imageData = canvas.toDataURL("image/png");
+
+    const printWindow = window.open("", "_blank");
+
+    if (!printWindow) {
+        alert(
+            "팝업이 차단되었습니다. 브라우저에서 팝업을 허용해주세요."
+        );
+        return;
+    }
+
+    printWindow.document.open();
+
+    printWindow.document.write(`
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+
+<title></title>
+
+<style>
+
+@page {
+    size: A4 portrait;
+    margin: 0;
+}
+
+html,
+body {
+    margin: 0 !important;
+    padding: 0 !important;
+    width: 210mm;
+    height: 297mm;
+    background: #ffffff;
+}
+
+body {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+}
+
+img {
+    display: block;
+    width: 180mm;
+    height: auto;
+}
+
+</style>
+
+
+</head>
+
+<body>
+
+<img src="${imageData}" alt="">
+
+<script>
+
+window.onload = function () {
+
+    setTimeout(function () {
+        window.print();
+    }, 300);
+
+};
+
+window.onafterprint = function () {
+    window.close();
+};
+
+<\/script>
+
+</body>
+</html>
+    `);
+
+    printWindow.document.close();
+}
+
+
+// ------------------------------------------------------------
+// 버튼 이벤트
+// ------------------------------------------------------------
+
+document
+    .getElementById("downloadButton")
+    .addEventListener(
+        "click",
+        downloadPNG
+    );
+
+
+document
+    .getElementById("printButton")
+    .addEventListener(
+        "click",
+        printSudoku
+    );
+
+
+// ------------------------------------------------------------
+// 시작
+// ------------------------------------------------------------
+
+renderSudoku();
+
+</script>
+
+</body>
+</html>
